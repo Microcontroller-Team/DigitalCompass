@@ -4,6 +4,7 @@ const int MPU_ADDR = 0x68;    // I2C-Adresse des MPU-9250
 const int MAG_ADDR = 0x0C;    // I2C-Adresse des AK8963 Magnetometers
 
 void setup() {
+  //SetupDelay Total: 20 ms 
   Wire.begin();
   Serial.begin(9600);
   Serial.println("MPU-9250 und Magnetometer AK8963 Test");
@@ -33,6 +34,7 @@ void setup() {
 }
 
 void loop() {
+  //LoopDelay Total: 500 ms pro Schleifendurchgang
   int16_t magX, magY, magZ;
 
   // Magnetometer Rohdaten lesen (6 Byte)
@@ -44,7 +46,6 @@ void loop() {
   if (Wire.available() == 7) {
     uint8_t status = Wire.read(); // Status-Byte (muss 0x01 sein für gültige Daten)
     Serial.print("Status: "); Serial.println(status, HEX);
-
     if (status & 0x01) {          // Überprüfen, ob neue Daten verfügbar sind
       magX = Wire.read() | Wire.read() << 8;
       magY = Wire.read() | Wire.read() << 8;
@@ -54,6 +55,7 @@ void loop() {
       Serial.print("Mag X: "); Serial.print(magX);
       Serial.print(" | Mag Y: "); Serial.print(magY);
       Serial.print(" | Mag Z: "); Serial.println(magZ);
+      
     } else {
       Serial.println("Keine neuen Daten vom Magnetometer.");
     }
