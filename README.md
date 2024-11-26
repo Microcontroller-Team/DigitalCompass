@@ -14,3 +14,5 @@ https://github.com/earlephilhower/arduino-pico/releases/download/global/package_
 ## Hard & Soft Iron Calibration
 Source: https://www.vectornav.com/resources/inertial-navigation-primer/specifications--and--error-budgets/specs-hsicalibration
 
+# Bibliothek
+https://github.com/asukiaaa/MPU9250_asukiaaa
