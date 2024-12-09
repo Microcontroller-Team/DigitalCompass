@@ -1,6 +1,6 @@
 #include <Wire.h>
 #include <MPU9250_asukiaaa.h>
-#include <Preferences.h>
+#include <Preferences.h> // save data permanently to esp32 flash
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include <SPI.h>
@@ -17,7 +17,7 @@
 
 // Timing constants
 const unsigned long BUTTON_HOLD_TIME = 5000;   // 5 seconds for calibration
-const unsigned long CALIBRATION_TIME = 30000; // 30 seconds for calibration length
+const unsigned long CALIBRATION_TIME = 30000; // 30 seconds for calibration duration
 
 // Global variables
 MPU9250_asukiaaa mpu;
@@ -59,7 +59,7 @@ void setup() {
   lcd.println("Initializing");
   lcd.setCursor(50, 130);
   lcd.println("Compass...");
-  delay(1000);
+  delay(2000);
 }
 
 void loop() {
@@ -87,7 +87,7 @@ void handleButtonPress() {
       lcd.fillScreen(ST77XX_BLACK);
       lcd.setCursor(40, 100); // Approximate center
       lcd.print("Calibrating...");
-      delay(1000);
+      delay(2000);
       calibrating = true;
       calibrationStartTime = millis();
       resetCalibrationValues();
@@ -124,7 +124,7 @@ void performCalibration() {
 
   // Display calibration progress
   lcd.fillRect(0, 0, 240, 240, ST77XX_BLACK);  // Clear previous calibration output
-  lcd.setCursor(0, 100); // Position for calibration data
+  lcd.setCursor(0, 100);
   lcd.printf("X_min: %.1f\nX_max: %.1f\nY_min: %.1f\nY_max: %.1f",
              X_min, X_max, Y_min, Y_max);
 
@@ -132,7 +132,7 @@ void performCalibration() {
   if (millis() - calibrationStartTime >= CALIBRATION_TIME) {
     Serial.println("Calibration completed. Saving values...");
     lcd.fillScreen(ST77XX_BLACK);
-    lcd.setCursor(60, 100); // Centered position
+    lcd.setCursor(20, 100); // Centered position
     lcd.print("Calibration done!");
     saveCalibrationValues();
     delay(2000);
@@ -163,15 +163,15 @@ void displayHeading() {
   Serial.print(heading);
   Serial.println("°");
 
-  // Clear screen and display heading at the top (centrally)
+  // Clear screen and display heading at the top
   lcd.fillScreen(ST77XX_BLACK);
 
-  String headingStr = String(heading) + " degrees";  // Add degree symbol
+  String headingStr = String(heading) + " degrees";
 
   // Set cursor to a position close to the center
-  lcd.setCursor(40, 10);  // Approximate center
-  lcd.setTextSize(2);  // Larger text size
-  lcd.print(headingStr);  // Display the heading with degree symbol
+  lcd.setCursor(40, 10);
+  lcd.setTextSize(2);
+  lcd.print(headingStr);
 
   // Draw the circle in the middle
   int centerX = 120, centerY = 120;
@@ -179,13 +179,13 @@ void displayHeading() {
   lcd.drawCircle(centerX, centerY, radius, ST77XX_WHITE);  // Circle representing the compass
 
   // Convert heading into radians and adjust for the display's coordinate system
-  float angle = (heading - 90) * (M_PI / 180.0);  // Convert to radians and adjust angle (North should be on top)
+  float angle = (heading - 90) * (M_PI / 180.0);  // Convert to radians and adjust angle
 
   int arrowLength = 60;
   int arrowX = centerX + arrowLength * cos(angle);
   int arrowY = centerY + arrowLength * sin(angle); // Calculate the arrow's x and y coordinates
 
-  // Draw the arrow (line from center to direction)
+  // Draw the arrow center to direction
   lcd.drawLine(centerX, centerY, arrowX, arrowY, ST77XX_WHITE);
 
   delay(500); // Update every 500 ms
