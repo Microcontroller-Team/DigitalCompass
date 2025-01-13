@@ -1,0 +1,234 @@
+#include <Wire.h>
+#include <MPU9250_asukiaaa.h>
+#include <Preferences.h> // save data permanently to esp32 flash
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7789.h>
+#include <SPI.h>
+
+// Pin definitions
+#define BUTTON_PIN 19    // Calibration button
+#define MPU_SDA    21    // I²C SDA
+#define MPU_SCL    22    // I²C SCL
+#define TFT_CS     5     // SPI Chip Select
+#define TFT_DC     15    // SPI Data/Command pin
+#define TFT_RST    4     // SPI Reset pin
+#define TFT_SCLK   18    // SPI Clock
+#define TFT_MOSI   23    // SPI Data pin
+
+// Timing constants
+const unsigned long BUTTON_HOLD_TIME = 5000;   // 5 seconds for calibration
+const unsigned long CALIBRATION_TIME = 30000; // 30 seconds for calibration duration
+
+// Global variables
+MPU9250_asukiaaa mpu;
+Preferences preferences;
+Adafruit_ST7789 lcd = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+
+float X_min, X_max, Y_min, Y_max;
+float X_mid, X_scale, Y_mid, Y_scale;
+
+bool buttonPressed = false;
+bool calibrating = false;
+unsigned long buttonPressStart = 0;
+unsigned long calibrationStartTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  // Initialize MPU9250
+  Wire.begin(MPU_SDA, MPU_SCL);
+  mpu.setWire(&Wire);
+  mpu.beginMag();
+  Serial.println("MPU9250 initialized.");
+
+  // Load calibration data
+  loadCalibrationValues();
+
+  // Initialize button
+  pinMode(BUTTON_PIN, INPUT_PULLDOWN);
+
+  // Initialize display
+  SPI.begin(TFT_SCLK, -1, TFT_MOSI, TFT_CS);
+  lcd.init(240, 240, SPI_MODE3);
+  lcd.setRotation(3);
+  lcd.fillScreen(ST77XX_BLACK);
+  lcd.setTextColor(ST77XX_WHITE);
+  lcd.setTextSize(2);
+  lcd.setCursor(50, 100);
+  lcd.println("Initializing");
+  lcd.setCursor(50, 130);
+  lcd.println("Compass...");
+  delay(2000);
+}
+
+void loop() {
+  handleButtonPress();
+
+  if (calibrating) {
+    performCalibration();
+  } else {
+    displayHeading();
+  }
+}
+
+/**
+ * Handles button press logic to detect if the button is held for the required time.
+ */
+void handleButtonPress() {
+  int buttonState = digitalRead(BUTTON_PIN);
+
+  if (buttonState == HIGH) {
+    if (!buttonPressed) {
+      buttonPressStart = millis();
+      buttonPressed = true;
+    } else if (millis() - buttonPressStart >= BUTTON_HOLD_TIME && !calibrating) {
+      Serial.println("Button held. Starting calibration...");
+      lcd.fillScreen(ST77XX_BLACK);
+      lcd.setCursor(40, 100); // Approximate center
+      lcd.print("Calibrating...");
+      delay(2000);
+      calibrating = true;
+      calibrationStartTime = millis();
+      resetCalibrationValues();
+    }
+  } else {
+    buttonPressed = false;
+  }
+}
+
+/**
+ * Resets calibration values to their initial extreme values.
+ */
+void resetCalibrationValues() {
+  X_min = 1e6;
+  X_max = -1e6;
+  Y_min = 1e6;
+  Y_max = -1e6;
+}
+
+/**
+ * Updates calibration values based on the current sensor readings.
+ */
+void performCalibration() {
+  mpu.magUpdate();
+
+  float magX = mpu.magX();
+  float magY = mpu.magY();
+
+  // Update calibration ranges
+  X_min = min(X_min, magX);
+  X_max = max(X_max, magX);
+  Y_min = min(Y_min, magY);
+  Y_max = max(Y_max, magY);
+
+  // Display calibration progress
+  lcd.fillRect(0, 0, 240, 240, ST77XX_BLACK);  // Clear previous calibration output
+  lcd.setCursor(0, 100);
+  lcd.printf("X_min: %.1f\nX_max: %.1f\nY_min: %.1f\nY_max: %.1f",
+             X_min, X_max, Y_min, Y_max);
+
+  // Check if calibration time has elapsed
+  if (millis() - calibrationStartTime >= CALIBRATION_TIME) {
+    Serial.println("Calibration completed. Saving values...");
+    lcd.fillScreen(ST77XX_BLACK);
+    lcd.setCursor(20, 100); // Centered position
+    lcd.print("Calibration done!");
+    saveCalibrationValues();
+    delay(2000);
+    calibrating = false;
+  }
+}
+
+/**
+ * Displays the current heading calculated from the sensor readings.
+ */
+void displayHeading() {
+  mpu.magUpdate();
+
+  float magX_raw = mpu.magX();
+  float magY_raw = mpu.magY();
+
+  // Normalize the readings
+  float magX = (magX_raw - X_mid) / X_scale;
+  float magY = (magY_raw - Y_mid) / Y_scale;
+
+  // Calculate heading
+  float heading = atan2(magY, magX) * (180.0 / M_PI);
+
+  // Ensure the heading is in the range [0, 360]
+  if (heading < 0) heading += 360.0;
+
+  Serial.print("Heading: ");
+  Serial.print(heading);
+  Serial.println("°");
+
+  // Clear screen and display heading at the top
+  lcd.fillScreen(ST77XX_BLACK);
+
+  String headingStr = String(heading) + " degrees";
+
+  // Set cursor to a position close to the center
+  lcd.setCursor(40, 10);
+  lcd.setTextSize(2);
+  lcd.print(headingStr);
+
+  // Draw the circle in the middle
+  int centerX = 120, centerY = 120;
+  int radius = 80;
+  lcd.drawCircle(centerX, centerY, radius, ST77XX_WHITE);  // Circle representing the compass
+
+  // Convert heading into radians and adjust for the display's coordinate system
+  float angle = (heading - 90) * (M_PI / 180.0);  // Convert to radians and adjust angle
+
+  int arrowLength = 60;
+  int arrowX = centerX + arrowLength * cos(angle);
+  int arrowY = centerY + arrowLength * sin(angle); // Calculate the arrow's x and y coordinates
+
+  // Draw the arrow center to direction
+  lcd.drawLine(centerX, centerY, arrowX, arrowY, ST77XX_WHITE);
+
+  delay(500); // Update every 500 ms
+}
+
+/**
+ * Loads calibration values from Preferences.
+ */
+void loadCalibrationValues() {
+  preferences.begin("calibration", true);
+  X_min = preferences.getFloat("X_min", -100.0);
+  X_max = preferences.getFloat("X_max", 100.0);
+  Y_min = preferences.getFloat("Y_min", -100.0);
+  Y_max = preferences.getFloat("Y_max", 100.0);
+  preferences.end();
+
+  updateCalibrationDerivedValues();
+}
+
+/**
+ * Saves the current calibration values to Preferences.
+ */
+void saveCalibrationValues() {
+  preferences.begin("calibration", false);
+  preferences.putFloat("X_min", X_min);
+  preferences.putFloat("X_max", X_max);
+  preferences.putFloat("Y_min", Y_min);
+  preferences.putFloat("Y_max", Y_max);
+  preferences.end();
+
+  updateCalibrationDerivedValues();
+  Serial.println("Calibration values saved!");
+}
+
+/**
+ * Updates derived calibration values (midpoint and scale).
+ */
+void updateCalibrationDerivedValues() {
+  X_mid = (X_min + X_max) / 2;
+  X_scale = (X_max - X_min) / 2;
+  Y_mid = (Y_min + Y_max) / 2;
+  Y_scale = (Y_max - Y_min) / 2;
+
+  if (X_scale == 0) X_scale = 1;
+  if (Y_scale == 0) Y_scale = 1;
+}
